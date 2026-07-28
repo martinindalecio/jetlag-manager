@@ -1,7 +1,7 @@
 {
   "name": "Jetlag Manager",
-  "status": "Prototype",
-  "url": "",
+  "status": "Live",
+  "url": "https://jetlag-manager.vercel.app",
   "year": "2026",
   "tags": ["Next.js", "TypeScript", "Circadian Science"],
   "description": {
