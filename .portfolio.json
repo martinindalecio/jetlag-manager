@@ -1,0 +1,11 @@
+{
+  "name": "Jetlag Manager",
+  "status": "Prototype",
+  "url": "",
+  "year": "2026",
+  "tags": ["Next.js", "TypeScript", "Circadian Science"],
+  "description": {
+    "en": "A jetlag adaptation planner that builds a personalized light-exposure and sleep-timing schedule for your trip, based on published circadian science — works fully offline once your plan is created.",
+    "es": "Un planificador de adaptación al jet lag que arma un cronograma personalizado de exposición a la luz y horarios de sueño para tu viaje, basado en ciencia circadiana publicada — funciona completamente offline una vez creado el plan."
+  }
+}
