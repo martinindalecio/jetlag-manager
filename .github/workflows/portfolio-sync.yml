@@ -28,7 +28,6 @@ jobs:
               "name":           p["name"],
               "status":         p.get("status", "Prototype"),
               "year":           p.get("year", ""),
-              "tags":           p.get("tags", []),
               "description_en": p.get("description", {}).get("en", ""),
               "description_es": p.get("description", {}).get("es", ""),
           }
