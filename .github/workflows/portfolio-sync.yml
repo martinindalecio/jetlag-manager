@@ -1,3 +1,12 @@
+# Copy this file to .github/workflows/portfolio-sync.yml in any project repo.
+#
+# Required GitHub secrets (Settings → Secrets → Actions):
+#   AIRTABLE_TOKEN   — Airtable personal access token (scopes: data.records:read, data.records:write)
+#   AIRTABLE_BASE_ID — The ID of your portfolio Airtable base (starts with "app...")
+#
+# The workflow triggers when .portfolio.json changes on main, or manually.
+# Remove the `paths` filter if you want it to sync on every push.
+
 name: Sync to Portfolio
 
 on:
@@ -19,11 +28,34 @@ jobs:
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
         run: |
           python3 << 'PYEOF'
-          import json, os, urllib.request, urllib.error, sys
+          import json, os, urllib.request, urllib.error, sys, time
 
           with open('.portfolio.json') as f:
               p = json.load(f)
 
+          base_id = os.environ["AIRTABLE_BASE_ID"]
+          token   = os.environ["AIRTABLE_TOKEN"]
+          at_url  = f"https://api.airtable.com/v0/{base_id}/Projects"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json",
+          }
+
+          def airtable_patch(fields):
+              payload = {
+                  "performUpsert": {"fieldsToMergeOn": ["name"]},
+                  "records": [{"fields": fields}],
+              }
+              req = urllib.request.Request(
+                  at_url,
+                  data=json.dumps(payload).encode(),
+                  headers=headers,
+                  method="PATCH",
+              )
+              with urllib.request.urlopen(req) as res:
+                  return json.loads(res.read())
+
+          # ── 1. sync project metadata ──────────────────────────────────────
           fields = {
               "name":           p["name"],
               "status":         p.get("status", "Prototype"),
@@ -34,33 +66,36 @@ jobs:
           if p.get("url"):
               fields["url"] = p["url"]
 
-          payload = {
-              "performUpsert": {"fieldsToMergeOn": ["name"]},
-              "records": [{"fields": fields}],
-          }
-
-          base_id = os.environ["AIRTABLE_BASE_ID"]
-          token   = os.environ["AIRTABLE_TOKEN"]
-          url     = f"https://api.airtable.com/v0/{base_id}/Projects"
-
-          req = urllib.request.Request(
-              url,
-              data=json.dumps(payload).encode(),
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json",
-              },
-              method="PATCH",
-          )
-
           try:
-              with urllib.request.urlopen(req) as res:
-                  result  = json.loads(res.read())
-                  created = result.get("createdRecords", [])
-                  updated = result.get("updatedRecords", [])
-                  action  = "Created" if created else "Updated"
-                  print(f"✅ {action}: {p['name']}")
+              result = airtable_patch(fields)
+              action = "Created" if result.get("createdRecords") else "Updated"
+              print(f"✅ {action}: {p['name']}")
           except urllib.error.HTTPError as e:
               print(f"❌ Airtable error {e.code}: {e.read().decode()}", file=sys.stderr)
               sys.exit(1)
+
+          # ── 2. capture screenshot (only for live projects with a public URL) ──
+          project_url = p.get("url")
+          is_repo     = p.get("repo", False)
+          if project_url and not is_repo and p.get("status") == "Live":
+              print(f"📸 Capturing screenshot for {project_url} …")
+              mlink = f"https://api.microlink.io?url={project_url}&screenshot=true&meta=false&embed=screenshot.url"
+              try:
+                  # microlink returns a redirect to the image; follow it to get the final CDN URL
+                  req = urllib.request.Request(
+                      f"https://api.microlink.io?url={project_url}&screenshot=true&meta=false",
+                      headers={"User-Agent": "portfolio-sync/1.0"},
+                  )
+                  with urllib.request.urlopen(req, timeout=30) as res:
+                      mdata = json.loads(res.read())
+
+                  ss_url = (mdata.get("data") or {}).get("screenshot", {}).get("url")
+                  if ss_url:
+                      airtable_patch({"name": p["name"], "screenshot_url": ss_url})
+                      print(f"✅ Screenshot saved: {ss_url[:60]}…")
+                  else:
+                      print("⚠️  microlink returned no screenshot URL")
+              except Exception as ex:
+                  # Non-fatal: screenshot capture is best-effort
+                  print(f"⚠️  Screenshot capture skipped: {ex}")
           PYEOF
